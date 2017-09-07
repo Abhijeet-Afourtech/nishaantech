@@ -7,4 +7,6 @@
     - nishaanconfig.json (configuration file)
     - *nishaanapp.log* (generated log)
    # MCU contains code to be uploaded to MCU.
-    -
+    - Nishaan_FW_V1.c
+
+- Some documentations are done in the code itself.
