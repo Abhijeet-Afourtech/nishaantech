@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo "/nishaan/init : starting /nishaan/init.py in background" >> /nishaan/nishaanTech.log
+chmod 777 /nishaan/test_init.py
+/usr/local/bin/python /nishaan/test_init.py 2>&1 | tee logfile.txt &
