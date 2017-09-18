@@ -17,8 +17,9 @@ os.chdir("/nishaan/")
 logging.basicConfig(filename='nishaanapp.log', level=logging.INFO, format='%(levelname)s %(asctime)s %(process)s %(pathname)s %(lineno)d  - %(message)s ')
 
 nishaanConfig = {}
-
 uartSel = None
+sel0 = None
+sel1 = None
 gsmPower = None
 gpsPower = None
 gsmReset = None
@@ -57,11 +58,13 @@ def loadAppConfig():
 # parameters for the scan.
 ####################
 def gpioSetup():
-	global uartSel, gsmPower, gpsPower, gsmReset, gpsReset, lullaby
+	global uartSel, sel0, sel1, gsmPower, gpsPower, gsmReset, gpsReset, lullaby
 	try:
 
 		# GPIO Pin config
-		uartSel  = nishaanConfig['gpioconf']['uartsel'] #26
+		#uartSel  = nishaanConfig['gpioconf']['uartsel'] #26
+		sel0  = nishaanConfig['gpioconf']['sel0'] #10
+		sel1  = nishaanConfig['gpioconf']['sel1'] #13
 		gsmPower = nishaanConfig['gpioconf']['gsmpower'] #11
 		gpsPower = nishaanConfig['gpioconf']['gpspower'] #20
 		gsmReset = nishaanConfig['gpioconf']['gsmreset'] #5
@@ -72,7 +75,9 @@ def gpioSetup():
 
 		GPIO.setmode(GPIO.BCM)
 
-		GPIO.setup(uartSel , GPIO.OUT)  # UART Select
+		#GPIO.setup(uartSel , GPIO.OUT)  # UART Select
+		GPIO.setup(sel0 , GPIO.OUT)  # UART Select
+		GPIO.setup(sel1 , GPIO.OUT)  # UART Select
 
 		GPIO.setup(gsmPower, GPIO.OUT)  # GSM POWER
 		GPIO.setup(gpsPower, GPIO.OUT)  # GPS POWER
@@ -90,7 +95,9 @@ def gpioSetup():
 
 def gpioClear():
 	try:
-		'''GPIO.output(uartSel,False) # True to Select MCU communication on MUX
+		#GPIO.output(uartSel,False) # True to Select MCU communication on MUX
+		GPIO.output(sel0,False) 
+		GPIO.output(sel1,False) 
 		time.sleep(1)
 		ser = serial.Serial("/dev/ttyS0",9600,timeout=1)
 
@@ -99,7 +106,7 @@ def gpioClear():
 		off = off.replace('\r','')
 		off = off.replace('\n',' ')
 		print off
-		ser.close()'''
+		ser.close()
 
 		GPIO.output(gsmPower, True)
 		GPIO.cleanup()
@@ -107,7 +114,38 @@ def gpioClear():
 		logging.info("GPIO clear succeeded")
 	except Exception as e:
 		logging.critical("GPIO clear failed:"+str(e.message)+", "+str(e.args))
-    
+
+###############################
+#---------------------------
+#| sel0 | sel1 | Component |
+#------+------+------------|
+#|  0   |  0   |   ----    |
+#------+------+------------|
+#|  0   |  1   |   DHT     |
+#------+------+------------|
+#|  1   |  0   |   GSM     |
+#------+------+------------|
+#|  1   |  1   |   GPS     |
+#-----------------------_---
+##############################
+def selectDHT():
+    #GPIO.output(uartSel,False) # True to Select MCU communication on MUX
+    GPIO.output(sel0,False) 
+    GPIO.output(sel1,True) 
+    time.sleep(2)
+
+def selectGSM():
+    #GPIO.output(uartSel,True) # True to Select GSM on MUX as per new h/w changes
+    GPIO.output(sel0,True) 
+    GPIO.output(sel1,False) 
+    time.sleep(1)
+
+def selectGPS():
+    #GPIO.output(uartSel,True) # True to Select GPS on MUX
+    GPIO.output(sel0,True) 
+    GPIO.output(sel1,True) 
+    time.sleep(1)
+
 def devID():
 	cmd = "cat /proc/cpuinfo | grep Serial | cut -d ' ' -f 2"
 	p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -205,10 +243,8 @@ def GPSScan(seconds = 15):
     global gpsResult, gpsPower, gpsReset
     logging.info('=======================GPS START====================================')
 
-    GPIO.output(uartSel,True) # True to Select GPS on MUX
-
+    selectGPS()
     GPIO.output(gpsPower, False) # turn on GPS
-
     # Reset GPS, High Pulse 010
 
     #GPIO.output(gpsReset, False) 
@@ -257,9 +293,7 @@ def GSMScan(noOFScans = 1):
     global gsmResult, gsmPower, gsmReset
     global simRegistered
     logging.info('=======================GSM START====================================')
-	
-    GPIO.output(uartSel,True) # True to Select GSM on MUX as per new h/w changes
-    time.sleep(1)
+    selectGSM()	
 
     
     # CMD('poff rnet')
@@ -374,9 +408,8 @@ def DHTScan():
     scannedData = []
     
     logging.info('=======================DHT START====================================')
-    GPIO.output(uartSel,False) # True to Select MCU communication on MUX
-    
-    time.sleep(2)
+
+    selectDHT()
 
     ser = serial.Serial("/dev/ttyS0",9600,timeout=1)
 
