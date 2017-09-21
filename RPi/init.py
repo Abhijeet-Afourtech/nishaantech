@@ -11,8 +11,9 @@ import serial
 import logging
 import json
 
-os.chdir("/nishaan/")
+os.chdir("/root")
 
+print "Hello"
 
 logging.basicConfig(filename='nishaanapp.log', level=logging.INFO, format='%(levelname)s %(asctime)s %(process)s %(pathname)s %(lineno)d  - %(message)s ')
 
@@ -62,7 +63,7 @@ def gpioSetup():
 	try:
 
 		# GPIO Pin config
-		#uartSel  = nishaanConfig['gpioconf']['uartsel'] #26
+		uartSel  = nishaanConfig['gpioconf']['uartsel'] #26
 		sel0  = nishaanConfig['gpioconf']['sel0'] #10
 		sel1  = nishaanConfig['gpioconf']['sel1'] #13
 		gsmPower = nishaanConfig['gpioconf']['gsmpower'] #11
@@ -75,7 +76,7 @@ def gpioSetup():
 
 		GPIO.setmode(GPIO.BCM)
 
-		#GPIO.setup(uartSel , GPIO.OUT)  # UART Select
+		GPIO.setup(uartSel , GPIO.OUT)  # UART Select
 		GPIO.setup(sel0 , GPIO.OUT)  # UART Select
 		GPIO.setup(sel1 , GPIO.OUT)  # UART Select
 
@@ -87,28 +88,27 @@ def gpioSetup():
 
 		GPIO.setup(lullaby , GPIO.OUT)  # lullaby
 
-		GPIO.output(gsmPower, True) # initialize GSM GPIO 
-		GPIO.output(gpsPower, True) # initialize GPS GPIO
+		GPIO.output(gsmPower, False) # initialize GSM GPIO 
+		GPIO.output(gpsPower, False) # initialize GPS GPIO
 		logging.info("GPIO setup Done")
 	except Exception as e:
 		logging.critical("Exception occurred during GPIO setup:"+str(e.message)+", "+str(e.args))
 
 def gpioClear():
 	try:
-		#GPIO.output(uartSel,False) # True to Select MCU communication on MUX
-		GPIO.output(sel0,False) 
-		GPIO.output(sel1,False) 
-		time.sleep(1)
+		selectDHT()
+		
 		ser = serial.Serial("/dev/ttyS0",9600,timeout=1)
-
+		'''
 		ser.write("sleep:")    #cell lac and cid
 		off = ser.readline()
 		off = off.replace('\r','')
 		off = off.replace('\n',' ')
 		print off
 		ser.close()
-
-		GPIO.output(gsmPower, True)
+		'''
+		selectGSM()
+		GPIO.output(gsmPower, False)
 		GPIO.cleanup()
 		print "End of script"
 		logging.info("GPIO clear succeeded")
@@ -119,31 +119,32 @@ def gpioClear():
 #---------------------------
 #| sel0 | sel1 | Component |
 #------+------+------------|
-#|  0   |  0   |   ----    |
+#|  0   |  0   |   GPS    |
 #------+------+------------|
 #|  0   |  1   |   DHT     |
 #------+------+------------|
 #|  1   |  0   |   GSM     |
 #------+------+------------|
-#|  1   |  1   |   GPS     |
+#|  1   |  1   |   ---     |
 #-----------------------_---
 ##############################
 def selectDHT():
-    #GPIO.output(uartSel,False) # True to Select MCU communication on MUX
+    GPIO.output(uartSel,False) # True to Select MCU communication on MUX
     GPIO.output(sel0,False) 
     GPIO.output(sel1,True) 
     time.sleep(2)
 
 def selectGSM():
-    #GPIO.output(uartSel,True) # True to Select GSM on MUX as per new h/w changes
+    GPIO.output(uartSel,False) # True to Select GSM on MUX as per new h/w changes
     GPIO.output(sel0,True) 
     GPIO.output(sel1,False) 
     time.sleep(1)
 
 def selectGPS():
-    #GPIO.output(uartSel,True) # True to Select GPS on MUX
-    GPIO.output(sel0,True) 
-    GPIO.output(sel1,True) 
+    GPIO.output(uartSel,False) # True to Select GPS on MUX
+    GPIO.output(sel0,False) 
+    GPIO.output(sel1,False)
+    GPIO.output(gpsReset,False) 
     time.sleep(1)
 
 def devID():
@@ -243,8 +244,9 @@ def GPSScan(seconds = 15):
     global gpsResult, gpsPower, gpsReset
     logging.info('=======================GPS START====================================')
 
+    GPIO.output(gpsPower, True) # turn on GPS
+    time.sleep(1)
     selectGPS()
-    GPIO.output(gpsPower, False) # turn on GPS
     # Reset GPS, High Pulse 010
 
     #GPIO.output(gpsReset, False) 
@@ -281,7 +283,7 @@ def GPSScan(seconds = 15):
             scannedData.append(sentences)
     ser.close()
 
-    GPIO.output(gpsPower, True) # turn off GPS
+    GPIO.output(gpsPower, False) # turn off GPS
     print '=======================GPS START===================================='
     logging.info(str(scannedData))
     gpsResult = scannedData
@@ -418,12 +420,17 @@ def DHTScan():
     ser.write("time:")     # Get epoch time from MCU
     #time.sleep(0.5)
     epoch = ser.read(200)
+    print "DHT: time- ",epoch
     epoch = epoch.replace('\r','')
     epoch = epoch.replace('\n','')
     print epoch
     epochTime = epoch.split(':')[1].strip()
     scannedData.append(epoch.strip())
 
+    ser.write("bat:")     # Get epoch time from MCU
+    time.sleep(2)
+    battery = ser.read(200)
+    print "Battery voltage: ",battery
     time.sleep(0.5)
          
     ser.write("size:")     # Get the byte size to read for DHT values
@@ -466,14 +473,15 @@ def scan():
 	
 	scanDuration = 0
 	noOfScans = 0
-	GPIO.output(gsmReset, True)
-	GPIO.output(gsmPower, False)
+	GPIO.output(gsmPower, True)
+	GPIO.output(gsmReset, False)
 
 	# Scan for DHT data
 	scanDuration = int(nishaanConfig['tasks']['dht']['duration'])
 	noOfScans = int(nishaanConfig['tasks']['dht']['scans'])
 	if(scanDuration):
 		DHTScan()
+		print"DHT scan ended"
 	else:
 		logging.info("DHT scan disabled")
 	
@@ -492,11 +500,11 @@ def scan():
 	noOfScans = int(nishaanConfig['tasks']['gsm']['scans'])
 	if(scanDuration):
 		GSMScan()
-		GPIO.output(gsmReset, True)
-		time.sleep(0.1)
 		GPIO.output(gsmReset, False)
-		time.sleep(0.5)
+		time.sleep(0.1)
 		GPIO.output(gsmReset, True)
+		time.sleep(0.5)
+		GPIO.output(gsmReset, False)
 	else:
 		logging.info("GSM disabled")
 
@@ -566,6 +574,7 @@ if __name__ == "__main__":
 		logging.info("Script Started")
 		loadAppConfig()
 		gpioSetup()
+		print "gpio set up done"
 
 		bleResult = None
 		gsmResult = None
@@ -574,8 +583,9 @@ if __name__ == "__main__":
 		sendData = {}    
 
 		startTime = int(round(time.time()))
-
+		print "scan start"
 		scan()
+		print "scan done"
 
 		#sendData['devID'] = devID()
     		sendData['devID'] = "00000000ddaba86b"
@@ -593,7 +603,7 @@ if __name__ == "__main__":
 		sendData['totalScanTime'] = int(round(time.time())) - startTime
 		print sendData
 
-		with open('/nishaan/data/'+sendData['timeStamp']+'.json','wb') as fp:
+		with open('./data/'+sendData['timeStamp']+'.json','wb') as fp:
 			json.dump(sendData, fp)
 
 		os.system("sync")
@@ -611,11 +621,12 @@ if __name__ == "__main__":
 			if checkPPPInterface():
 				if checkServerAvailability():
 					print " Connected to server "
-					data =  os.listdir("/nishaan/data")
+					data =  os.listdir("./data")
 					
 					for file in data:
+					    try:
 						print "===========  "+file+" starts ============="
-						with open('/nishaan/data/'+file,'r') as fp:
+						with open('./data/'+file,'r') as fp:
 							data = json.load(fp)
 							content = json.dumps(data)
 
@@ -624,7 +635,7 @@ if __name__ == "__main__":
 						myResponse = requests.post(url, data=content,headers=headers)
 
 						if myResponse.content == '200':
-							os.remove('/nishaan/data/'+file)
+							os.remove('./data/'+file)
 							print "Data Sent SuccessFully"
 							logging.info(file+": Data Sent SuccessFully")
 							#print content
@@ -632,6 +643,8 @@ if __name__ == "__main__":
 							print "Error :: ",myResponse.content
 							logging.error(str(myResponse.content))
 						print "===========  "+file+" ends ============="
+					    except Exception as e:
+						logging.error("File Exception occurred: "+str(e.message)+", "+str(e.args))
 	except Exception as e:
 		print "Exception occurred: ", e.message, e.args
 		logging.error("Exception occurred: "+str(e.message)+", "+str(e.args))
